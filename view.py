@@ -20,10 +20,15 @@ def fun(img):
     for i in range(0, len(ans)):
 
         st.write('NDC: ' + ans[i])
+        link(ans[i])
         st.image(local_im[i])
+        st.markdown("***")
+        
 
-    # st.write('fun click')
-# return
+
+def link(NDC):
+    link = f'[Detail](https://www.drugs.com/imprints.php?ndc={NDC})'
+    st.markdown(link, unsafe_allow_html=True)
 
 
 uploaded_file = st.file_uploader("Choose an image file", type = ["jpg", "jpeg", "png"] )
@@ -39,7 +44,4 @@ if uploaded_file is not None:
     if st.button('Classify'):
         fun(img)
 
-    
-    # print(opencv_image)
-    # Now do something with the image! For example, let's display it:
     st.image(img, channels="RGB")
