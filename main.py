@@ -1,5 +1,4 @@
 import torch
-# import matplotlib.pyplot as plt
 import requests
 import io
 
@@ -16,74 +15,26 @@ from keras.preprocessing import image
 from sklearn.preprocessing import normalize
 import pickle
 
-# from PIL import Image
-# from keras.preprocessing import image
 
 
-# try:
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-# except:
-    # pass
+
 
 # Yolo
-
-def load_model():
+def load_model(): # load yolo
   model = torch.hub.load('ultralytics/yolov5', 'custom', path_or_model='weight/cannyS.pt')
-  # model = torch.hub.load('ultralytics/yolov5', 'custom', path_or_model='/content/drive/MyDrive/Super AI Engineer/ฝึกงาน/Pill Detection/data_yolo/modelS.pt')
 
   return model
 
-def resize_im(img):
 
-  # im = cv2.imread(pathh)
-  # im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-  ht, wd, cc= img.shape
-
-  # create new image of desired size and color (blue) for padding
-  ww = 1080
-  hh = 1080
-  color = (0,0,0)
-  result = np.full((hh,ww,cc), color, dtype=np.uint8)
-
-  # compute center offset
-  xx = (ww - wd) // 2
-  yy = (hh - ht) // 2
-
-  # copy img image into center of result image
-  result[yy:yy+ht, xx:xx+wd] = img
-
-  return result
-
-
-def square(img):
-
-  shape = img.shape[0], img.shape[1]
-  # print(shape)  
-  min_shape = min(shape)
-
-  if min_shape == shape[0]:
-    ww = round((shape[1] - shape[0]) / 2)
-    result = img[0:min_shape, ww:ww+min_shape]
-
-  else:
-    hh = round((shape[0] - shape[1]) / 2)
-    result = img[hh:hh+ min_shape, 0:min_shape]
-    # print(hh)
-
-
-
-  return result
-
-
-def read_im(path):
+def read_im(path): # read img to cv2 (1)
   img = cv2.imread(path)
   img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
   return img
 
 
-
-def pre_process(img): # preprocess_img
+def pre_process(img): # preprocess_img (2)
 
   img = square(img)
 
@@ -106,13 +57,55 @@ def pre_process(img): # preprocess_img
 
   return img, im
 
-def localize(img):
+
+# Module pre-process ############################################### (2)
+def square(img): # crop img rectangle shape to square shape
+
+  shape = img.shape[0], img.shape[1]
+  min_shape = min(shape)
+
+  if min_shape == shape[0]:
+    ww = round((shape[1] - shape[0]) / 2)
+    result = img[0:min_shape, ww:ww+min_shape]
+
+  else:
+    hh = round((shape[0] - shape[1]) / 2)
+    result = img[hh:hh+ min_shape, 0:min_shape]
+
+  return result
+
+def resize_im(img): # Conditional module --> # use extra this module when img < 1080 Px (padding img ans fill RGB(0,0,0)) 
+
+  ht, wd, cc= img.shape
+
+  # create new image of desired size and color (black) for padding
+
+  #Can edit........................
+  ww = 1080 # result padding size
+  hh = 1080 # result padding size
+  color = (0,0,0) # filll color
+  # ................................
+
+  result = np.full((hh,ww,cc), color, dtype=np.uint8)
+
+  # compute center offset
+  xx = (ww - wd) // 2
+  yy = (hh - ht) // 2
+
+  # copy img image into center of result image
+  result[yy:yy+ht, xx:xx+wd] = img
+
+  return result
+####################################################################
+
+
+def localize(img): # run Yolo
   results = yolo(img)
-  # print(results.xyxy[0])
+  
   return results
 
-def crop_localize(results, im):
 
+def crop_localize(results, im): #use output from yolo to crop image
   local_im = []
 
   d = results.xyxy[0]
@@ -128,12 +121,12 @@ def crop_localize(results, im):
     local_im.append(im[y1:y2, x1:x2])
 
   return local_im
-
-
 #end Yolo
 
+
+
 # Classification
-def load_model_ex():
+def load_model_ex(): # load model extract feature
   extract = ResNet50(include_top=False, weights='imagenet', classes=1000)
 
   with open('weight\svm_10_class.pkl', 'rb') as f:
@@ -144,10 +137,9 @@ def load_model_ex():
 
 
 
-def square_clss(img, dim=(224,224)):
+def square_clss(img, dim=(224,224)): # resize to 224 and crop to square
   # img = cv2.imread(path)
   shape = img.shape[0], img.shape[1]
-  # print(shape)
   min_shape = min(shape)
 
   if min_shape == shape[0]:
@@ -157,7 +149,6 @@ def square_clss(img, dim=(224,224)):
   else:
     hh = round((shape[0] - shape[1]) / 2)
     result = img[hh:hh+ min_shape, 0:min_shape]
-    # print(hh)
 
   
   result = cv2.resize(result, dim)
@@ -165,27 +156,28 @@ def square_clss(img, dim=(224,224)):
   return result
 
 
-def extract_feature(img):
+def extract_feature(img): # run extract feature
 
-  
+  #pre process
   img = img/1.0
   img = img.astype(np.float32)
-  # img = img[...,::-1].astype(np.float32)
  
   img = square_clss(img, (224,224))
 
   x = image.img_to_array(img) 
   x = np.expand_dims(x, axis=0)
   x = preprocess_input(x)
-  features = extract.predict(x, batch_size=1,verbose=0)
-  features = np.ndarray.flatten(features).astype('float64')
-  feat = normalize([features])[0]
+
+  # extract deature
+  features = extract.predict(x, batch_size=1,verbose=0) # DL extract feature
+  features = np.ndarray.flatten(features).astype('float64') # dense
+  feat = normalize([features])[0] # norm
 
 
   return feat
 
 
-def create_fea(local_im):
+def create_fea(local_im): # take each img to extract feature
   clsset = pd.DataFrame()
   fea = []
 
@@ -199,7 +191,7 @@ def create_fea(local_im):
   return clsset
 
 
-def predict_ndc(dataset):
+def predict_ndc(dataset): # classify model
 
   fea = dataset['feature']
   ans = clf.predict(np.vstack(fea.values))
@@ -208,49 +200,22 @@ def predict_ndc(dataset):
 
 
 
+def main_classify(img): # run all process
 
-
-
-
-#main
-# path = 'img/test.jpg'
-
-
-# main
-# img = read_im(path)
-
-
-def main_classify(img):
-
+  # localize
   img, im = pre_process(img)
   result = localize(img)
   local_im = crop_localize(result, im)
 
-
-
-  # extract, clf = load_model_ex()
+  # classify
   feavec = create_fea(local_im)
-
-
   ans = predict_ndc(feavec)
 
-  print(local_im)
 
   return ans, local_im
 
 
 
-def main():
-  #main
-  path = 'img/test.jpg'
-
-
-  # main
-  img = read_im(path)
-  ans = main_classify(img)
-  print(ans)
-  # return ans
-
+#Load Weight Model
 extract, clf = load_model_ex()
 yolo = load_model()
-# main()
