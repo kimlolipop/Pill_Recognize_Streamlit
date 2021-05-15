@@ -1,0 +1,4 @@
+weight/resnet50_200_class.pkl
+weight/resnet101_200_class.pkl
+weight/VGG19_200_class.pkl
+weight/svm_10_class.pkl
