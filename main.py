@@ -9,7 +9,16 @@ import pandas as pd
 import seaborn
 import os
 
-from keras.applications.resnet50 import ResNet50
+import tensorflow as tf
+from tensorflow import keras
+# from keras.applications.resnet50 import ResNet50
+# from keras.applications.resnet101 import ResNet101
+# from keras.applications.resnet152 import ResNet152
+# from keras.applications.vgg19 import VGG19
+# from keras.applications.efficientnetb3 import EfficientNetB3
+
+# from keras_resnet.models import ResNet50 #, ResNet101, ResNet152, VGG19, EfficientNetB3
+
 from keras.applications.imagenet_utils import preprocess_input
 from keras.preprocessing import image
 from sklearn.preprocessing import normalize
@@ -40,7 +49,8 @@ def pre_process(img): # preprocess_img (2)
 
 
   if img.shape[0] <= 1080:
-    img = resize_im(img)
+    # img = resize_im(img)
+    cv2.resize(img, (1080 , 1080))
   else: 
     img = cv2.resize(img, (1080 , 1080))
 
@@ -107,38 +117,55 @@ def localize(img): # run Yolo
 
 def crop_localize(results, im): #use output from yolo to crop image
   local_im = []
-
   d = results.xyxy[0]
   col = ['x1','y1','x2','y2','confidence','class']
   df2 = pd.DataFrame(np.array(d), columns=col)
-  for i in range(0, len(df2)):
 
-    x1 = int(df2[['x1']].iloc[i].values[0])
-    y1 = int(df2[['y1']].iloc[i].values[0])
-    x2 = int(df2[['x2']].iloc[i].values[0])
-    y2 = int(df2[['y2']].iloc[i].values[0])
+  if len(df2) > 0:
+    
+    for i in range(0, len(df2)):
 
-    local_im.append(im[y1:y2, x1:x2])
+      x1 = int(df2[['x1']].iloc[i].values[0])
+      y1 = int(df2[['y1']].iloc[i].values[0])
+      x2 = int(df2[['x2']].iloc[i].values[0])
+      y2 = int(df2[['y2']].iloc[i].values[0])
 
-  return local_im
+      local_im.append(im[y1:y2, x1:x2])
+
+    # print(local_im)
+    return local_im
+
+  else:
+    local_im.append(im)
+    # print(im)
+    return local_im
 #end Yolo
 
 
 
 # Classification
 def load_model_ex(): # load model extract feature
-  extract = ResNet50(include_top=False, weights='imagenet', classes=1000)
+  extract_resnet50 = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', classes=1000)
+  extract_resnet101 = tf.keras.applications.ResNet101(include_top=False, weights='imagenet', classes=1000)
+  extract_VGG19 = tf.keras.applications.VGG19(include_top=False, weights='imagenet', classes=1000)
 
-  with open('weight\svm_10_class.pkl', 'rb') as f:
-    clf = pickle.load(f)
+  with open('weight/resnet101_200_class.pkl', 'rb') as f:
+    clf_resnet50 = pickle.load(f)
 
 
-  return extract, clf
+  with open('weight/resnet101_200_class.pkl', 'rb') as f:
+    clf_resnet101 = pickle.load(f)
+
+
+  with open('weight/VGG19_200_class.pkl', 'rb') as f:
+    clf_vgg19 = pickle.load(f)
+
+  return extract_resnet50, extract_resnet101, extract_VGG19,clf_resnet50, clf_resnet101, clf_vgg19
 
 
 
 def square_clss(img, dim=(224,224)): # resize to 224 and crop to square
-  # img = cv2.imread(path)
+  
   shape = img.shape[0], img.shape[1]
   min_shape = min(shape)
 
@@ -168,24 +195,50 @@ def extract_feature(img): # run extract feature
   x = np.expand_dims(x, axis=0)
   x = preprocess_input(x)
 
-  # extract deature
-  features = extract.predict(x, batch_size=1,verbose=0) # DL extract feature
+  # extract feature resnet50
+  features = extract_resnet50.predict(x, batch_size=1,verbose=0) # DL extract feature
   features = np.ndarray.flatten(features).astype('float64') # dense
-  feat = normalize([features])[0] # norm
+  feat_resnet50 = normalize([features])[0] # norm
+
+  # extract feature resnet101
+  features = extract_resnet101.predict(x, batch_size=1,verbose=0) # DL extract feature
+  features = np.ndarray.flatten(features).astype('float64') # dense
+  feat_resnet101 = normalize([features])[0] # norm
 
 
-  return feat
+  # extract feature VGG19
+  features = extract_VGG19.predict(x, batch_size=1,verbose=0) # DL extract feature
+  features = np.ndarray.flatten(features).astype('float64') # dense
+  feat_VGG19 = normalize([features])[0] # norm
+
+
+  return feat_resnet50, feat_resnet101, feat_VGG19 #add 5 feat
 
 
 def create_fea(local_im): # take each img to extract feature
   clsset = pd.DataFrame()
-  fea = []
+  fea_resnet50 = []
+  fea_resnet101 = []
+  # fea_resnet152 = []
+  fea_VGG19 = []
+  # fea_effnetB3 = []
 
   for i in range(0, len(local_im)):
-    a = extract_feature(local_im[i])
-    fea.append(a)
+    resnet50, resnet101, VGG19 = extract_feature(local_im[i])
 
-  clsset['feature'] = fea
+
+
+    fea_resnet50.append(resnet50)
+    fea_resnet101.append(resnet101)
+    fea_VGG19.append(VGG19)
+
+
+  
+
+  clsset['resnet50'] = fea_resnet50
+  clsset['resnet101'] = fea_resnet101
+  clsset['VGG19'] = fea_VGG19
+
 
 
   return clsset
@@ -193,10 +246,21 @@ def create_fea(local_im): # take each img to extract feature
 
 def predict_ndc(dataset): # classify model
 
-  fea = dataset['feature']
-  ans = clf.predict(np.vstack(fea.values))
+  ##### edit + Stacking
+  fea = dataset['resnet50']
+  ans1 = clf_resnet50.predict(np.vstack(fea.values))
 
-  return ans
+  
+  fea = dataset['resnet101']
+  ans2 = clf_resnet101.predict(np.vstack(fea.values))
+
+  
+
+  fea = dataset['VGG19']
+  ans4 = clf_vgg19.predict(np.vstack(fea.values))
+  
+
+  return ans1, ans2, ans4
 
 
 
@@ -209,7 +273,34 @@ def main_classify(img): # run all process
 
   # classify
   feavec = create_fea(local_im)
-  ans = predict_ndc(feavec)
+  ans1, ans2, ans4  = predict_ndc(feavec)
+
+
+
+
+
+  # voting
+  ans = []
+  for z in range(0, len(ans1)):
+    test_list = [ans1[z], ans2[z], ans4[z]]
+    # test_list = ['9', '4', '5', '4', '4', '5', '9', '5', '4']
+    
+    # printing original list
+    print ("Original list : " + str(test_list))
+      
+    # using naive method to 
+    # get most frequent element
+    max = 0
+    res = test_list[0]
+    for i in test_list:
+        freq = test_list.count(i)
+        if freq > max:
+            max = freq
+            res = i
+
+    ans.append(res)
+  # print ("Most frequent number is : " + str(res))
+
 
 
   return ans, local_im
@@ -217,5 +308,5 @@ def main_classify(img): # run all process
 
 
 #Load Weight Model
-extract, clf = load_model_ex()
+extract_resnet50, extract_resnet101, extract_VGG19, clf_resnet50, clf_resnet101, clf_vgg19 = load_model_ex()
 yolo = load_model()
